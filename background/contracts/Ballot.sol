@@ -72,6 +72,26 @@ contract Ballot {
         voters[voter].weight = 1;
     }
 
+    // IMPROVEMENT: accept array of address, so we can batch them into one transaction.
+    function giveRightToVotes(address[] memory voters_) external {
+        require(
+            msg.sender == chairperson,
+            "Only chairperson can give right to vote."
+        );
+        
+        for (uint i = 0; i < voters_.length; i++) {
+            address voter = voters_[i];
+
+            require(
+                !voters[voter].voted,
+                "The voter already voted."
+            );
+            require(voters[voter].weight == 0);
+
+            voters[voter].weight = 1;
+        }
+    }
+
     /// Delegate your vote to the voter `to`.
     function delegate(address to) external {
         // assigns reference

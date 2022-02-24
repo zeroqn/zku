@@ -18,9 +18,14 @@ describe("Ballot", function () {
     await ballot.deployed();
 
     // First one is chairperson
-    for (let i = 1; i <= 10; i++) {
-        const giveRightToVoteTx = await ballot.giveRightToVote(signers[i].address);
-        await giveRightToVoteTx.wait();
-    }
+    // Original version
+    // for (let i = 1; i <= 10; i++) {
+    //     const giveRightToVoteTx = await ballot.giveRightToVote(signers[i].address);
+    //     await giveRightToVoteTx.wait();
+    // }
+
+    const voters = signers.slice(1, 11).map((signer) => signer.address);
+    const giveRightToVotesTx = await ballot.giveRightToVotes(voters);
+    await giveRightToVotesTx.wait();
   });
 });
