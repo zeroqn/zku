@@ -32,6 +32,14 @@ contract SimpleMerkleTree4 {
         return nodes[0];
     }
 
+    function getLeaves() public view returns (bytes32[4] memory) {
+        bytes32[4] memory leaves;
+        for (uint256 i = 0; i < 4; i++) {
+            leaves[i] = nodes[i + leafOffset];
+        }
+        return leaves;
+    }
+
     function update(bytes32 leaf, uint256 leafIndex) public returns (bytes32) {
         require(leafIndex < 4, "leaf index out of bound");
 

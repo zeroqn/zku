@@ -56,6 +56,10 @@ contract GameItem is ERC721URIStorage {
         return newItemId;
     }
 
+    function merkleLeaves() public view returns (bytes32[4] memory) {
+        return merkleTree.getLeaves();
+    }
+
     function merkleRoot() public view returns (bytes32) {
         return merkleTree.root();
     }

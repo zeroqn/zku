@@ -25,6 +25,9 @@ describe("SimpleMerkleTree", function () {
       expect(await merkleTree.root()).to.equal(zeroRoot);
     }
 
+    const zeroHash = await merkleTree.zeroHash();
+    expect(await merkleTree.getLeaves()).to.eql([zeroHash, zeroHash, zeroHash, zeroHash]);
+
     const leafOne = abiCoder.encode(["uint256"], [1]);
     const updateLeafTx = await merkleTree.update(leafOne, 1);
     await updateLeafTx.wait();

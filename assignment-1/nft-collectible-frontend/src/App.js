@@ -4,11 +4,17 @@ import "./App.css";
 import contract from "./contracts/GameItem.json";
 
 // contract address on localhost ganache
-const contractAddress = "0xabcb8ff49d1da53cd2d03aa0bb09db67e2261f3d";
+const contractAddress = "0x6b706659301dcc98dcc62e577756b1f5b22b710c";
+const snarkjs = require("snarkjs");
 const abi = contract.abi;
 
 function App() {
   const [currentAccount, setCurrentAccount] = useState(null);
+
+  const wasmFile = "http://localhost:3000/merkleroot.wasm";
+  const zkeyFile = "http://localhost:3000/merkleroot_0001.zkey";
+  const verificationKey =
+    "http://localhost:3000/merkleroot_verification_key.json";
 
   const checkWalletIsConnected = () => {
     const { ethereum } = window;
@@ -62,6 +68,37 @@ function App() {
     }
   };
 
+  const merkleProofHandler = async () => {
+    const { ethereum } = window;
+    if (!ethereum) {
+      console.log("Ethereum object does not exist");
+      return;
+    }
+
+    try {
+      const provider = new ethers.providers.Web3Provider(ethereum);
+      const signer = provider.getSigner();
+      const nftContract = new ethers.Contract(contractAddress, abi, signer);
+
+      const leaves = await nftContract.merkleLeaves();
+      console.log(`Merkle leaves ${leaves}`);
+
+      const { proof, publicSignals } = await snarkjs.groth16.fullProve(
+        leaves,
+        wasmFile,
+        zkeyFile
+      );
+      const vkey = await fetch(verificationKey).then(function (res) {
+        return res.json();
+      });
+
+      const res = await snarkjs.groth16.verify(vkey, publicSignals, proof);
+      console.log(`verify result ${res}`);
+    } catch (err) {
+      console.log(err);
+    }
+  };
+
   const connectWalletButton = () => {
     return (
       <button
@@ -81,6 +118,17 @@ function App() {
     );
   };
 
+  const merkleProofButton = () => {
+    return (
+      <button
+        onClick={merkleProofHandler}
+        className="cta-button merkle-proof-button"
+      >
+        Merkle Proof
+      </button>
+    );
+  };
+
   useEffect(() => {
     checkWalletIsConnected();
   }, []);
@@ -89,6 +137,7 @@ function App() {
     <div className="main-app">
       <h1>Demo Game Item Tutorial</h1>
       <div>{currentAccount ? mintNftButton() : connectWalletButton()}</div>
+      <div>{currentAccount ? merkleProofButton() : ""}</div>
     </div>
   );
 }
