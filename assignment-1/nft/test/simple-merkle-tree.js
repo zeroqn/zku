@@ -2,7 +2,7 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
 describe("SimpleMerkleTree", function () {
-  it("Should able to update merkle root", async function () {
+  it.skip("Should able to update merkle root", async function () {
     const SimpleMerkleTree = await ethers.getContractFactory(
       "SimpleMerkleTree4"
     );
