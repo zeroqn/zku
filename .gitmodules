@@ -1,9 +1,6 @@
-[submodule "assignment-1/q-1/circomlib"]
-	path = assignment-1/q-1/circomlib
-	url = https://github.com/iden3/circomlib
 [submodule "assignment-1/circomlib"]
 	path = assignment-1/circomlib
 	url = https://github.com/iden3/circomlib
-[submodule "assignment-3/triangle_jump/circomlib"]
-	path = assignment-3/triangle_jump/circomlib
+[submodule "circomlib"]
+	path = circomlib
 	url = https://github.com/iden3/circomlib

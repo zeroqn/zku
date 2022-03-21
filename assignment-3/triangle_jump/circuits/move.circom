@@ -12,8 +12,8 @@ pragma circom 2.0.0;
     - MiMCSponge(x2,y2) = pub2
 */
 
-include "../circomlib/circuits/mimcsponge.circom";
-include "../circomlib/circuits/comparators.circom";
+include "../../../circomlib/circuits/mimcsponge.circom";
+include "../../../circomlib/circuits/comparators.circom";
 include "./range_proof.circom";
 
 template Move() {

@@ -3,7 +3,7 @@ pragma circom 2.0.0;
 // Copy from
 // https://github.com/darkforest-eth/darkforest-v0.3/blob/master/circuits/range_proof/circuit.circom
 
-include "../circomlib/circuits/comparators.circom";
+include "../../../circomlib/circuits/comparators.circom";
 
 // NB: RangeProof is inclusive.
 // input: field element, whose abs is claimed to be less than max_abs_value
