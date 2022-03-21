@@ -1,0 +1,55 @@
+#!/bin/bash
+
+set -e
+
+circuit=$1
+power=$2
+compiled_js=${circuit}_js
+
+echo "create generated dir and cd to it"
+echo ""
+mkdir -p generated
+cd generated
+
+echo "compile circuit ${circuit}.circom"
+echo ""
+circom ../$circuit.circom --r1cs --wasm --sym -c
+echo ""
+
+echo "compute witness with WebAssembly"
+node ${compiled_js}/generate_witness.js ${compiled_js}/${circuit}.wasm ../${circuit}_input.json ${circuit}_witness.wtns
+echo "./generated/${circuit}_witness.wtns is generated"
+
+echo "trust setup"
+
+# Pass $power to fix circuit too big for this power of tau ceremony
+# Reference: https://github.com/iden3/snarkjs/issues/123
+echo "powers of tau ceremony"
+# Default use power 12
+power=${power:=12}
+echo "use power ${power}"
+snarkjs powersoftau new bn128 ${power} pot12_0000.ptau -v
+
+echo "our contribute to the ceremony"
+snarkjs powersoftau contribute pot12_0000.ptau pot12_0001.ptau --name="Our first contribution" -v
+
+echo "phase 2"
+snarkjs powersoftau prepare phase2 pot12_0001.ptau pot12_final.ptau -v
+
+echo "generate proving and verification keys"
+snarkjs groth16 setup ${circuit}.r1cs pot12_final.ptau ${circuit}_0000.zkey
+
+echo "our contribute to phase 2 of the ceremony"
+snarkjs zkey contribute ${circuit}_0000.zkey ${circuit}_0001.zkey --name="Our first contribution" -v
+
+echo "export verification key"
+snarkjs zkey export verificationkey ${circuit}_0001.zkey ${circuit}_verification_key.json
+
+echo "generate a proof"
+snarkjs groth16 prove ${circuit}_0001.zkey ${circuit}_witness.wtns ${circuit}_proof.json ${circuit}_public.json
+
+echo "verify a proof"
+snarkjs groth16 verify ${circuit}_verification_key.json ${circuit}_public.json ${circuit}_proof.json
+
+cp ${circuit}_public.json ../
+cp ${circuit}_proof.json ../
