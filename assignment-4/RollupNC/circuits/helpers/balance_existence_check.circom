@@ -13,6 +13,7 @@ template BalanceExistence(k){
     signal input paths2rootPos[k];
     signal input paths2root[k];
 
+    // Calcualte balance hash
     component balanceLeaf = BalanceLeaf();
     balanceLeaf.x <== x;
     balanceLeaf.y <== y;
@@ -20,6 +21,7 @@ template BalanceExistence(k){
     balanceLeaf.nonce <== nonce; 
     balanceLeaf.tokenType <== tokenType;
 
+    // Verify merkle proof of balance
     component balanceExistence = LeafExistence(k);
     balanceExistence.leaf <== balanceLeaf.out;
     balanceExistence.root <== balanceRoot;

@@ -1,5 +1,6 @@
 include "../../circomlib/circuits/mimc.circom";
 
+// Hash(address(pubkey), balance, nocne, token type)
 template BalanceLeaf() {
 
     signal input x;

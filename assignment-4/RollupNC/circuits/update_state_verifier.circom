@@ -110,6 +110,7 @@ template Main(n,m) {
         txExistence[i].R8y <== R8y[i];
         txExistence[i].S <== S[i];
     
+        // Verify sender balance merkle proof
         // sender existence check
         senderExistence[i] = BalanceExistence(n);
         senderExistence[i].x <== fromX[i];
@@ -130,6 +131,7 @@ template Main(n,m) {
 
         nonceFrom[i] != NONCE_MAX_VALUE;
 
+        // Require transfer tokenType from and to must be equal
         //-----CHECK TOKEN TYPES === IF NON-WITHDRAWS-----//
         ifBothHighForceEqual[i] = IfBothHighForceEqual();
         ifBothHighForceEqual[i].check1 <== toX[i];
@@ -138,6 +140,7 @@ template Main(n,m) {
         ifBothHighForceEqual[i].b <== tokenTypeFrom[i];
         //-----END CHECK TOKEN TYPES-----//  
 
+        // Verify new sender balance tree root after this transfer
         // subtract amount from sender balance; increase sender nonce 
         newSender[i] = BalanceLeaf();
         newSender[i].x <== fromX[i];
@@ -160,6 +163,7 @@ template Main(n,m) {
         //-----END SENDER IN TREE 2 AFTER DEDUCTING CHECK-----//
 
 
+        // Verify new receiver balance tree after this transfer
         // receiver existence check in intermediate root from new sender
         receiverExistence[i] = BalanceExistence(n);
         receiverExistence[i].x <== toX[i];
@@ -179,6 +183,7 @@ template Main(n,m) {
         newReceiver[i].x <== toX[i];
         newReceiver[i].y <== toY[i];
 
+        // Support burn?
         // if receiver is zero address, do not change balance
         // otherwise add amount to receiver balance
         allLow[i] = AllLow(2);
@@ -187,7 +192,7 @@ template Main(n,m) {
 
         ifThenElse[i] = IfAThenBElseC();
         ifThenElse[i].aCond <== allLow[i].out;
-        ifThenElse[i].bBranch <== balanceTo[i];
+        ifThenElse[i].bBranch <== balanceTo[i]; // receiver is zero address here
         ifThenElse[i].cBranch <== balanceTo[i] + amount[i];  
 
         newReceiver[i].balance <== ifThenElse[i].out; 

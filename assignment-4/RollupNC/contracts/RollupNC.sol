@@ -88,13 +88,17 @@ contract RollupNC is Update_verifier, Withdraw_verifier{
             uint[2] memory c,
             uint[3] memory input
         ) public onlyCoordinator {
+        // Make sure old root is correct
         require(currentRoot == input[2], "input does not match current root");
+        // Verify every transfer tx (include balance tree before and after)
         //validate proof
         require(update_verifyProof(a,b,c,input),
         "SNARK proof is invalid");
         // update merkle root
         currentRoot = input[0];
+        // Aka l2 block nubmer
         updateNumber++;
+        // Store mapper from tx root to block number
         updates[input[1]] = updateNumber;
         emit UpdatedState(input[0], input[1], input[2]); //newRoot, txRoot, oldRoot
     }
@@ -113,21 +117,33 @@ contract RollupNC is Update_verifier, Withdraw_verifier{
 			   amount == 0 && msg.value == 0,
 			   "tokenType 0 does not have real value");
         } else if ( tokenType == 1 ) {
+           // Deposit ETH
            require(
 			   msg.value > 0 && msg.value >= amount,
 			   "msg.value must at least equal stated amount in wei");
         } else if ( tokenType > 1 ) {
+            // Deposit ERC20, user must approve this contract address
             require(
 				amount > 0,
 				"token deposit must be greater than 0");
             address tokenContractAddress = tokenRegistry.registeredTokens(tokenType);
             tokenContract = IERC20(tokenContractAddress);
+            // transferFrom user with declared deposit amount
             require(
                 tokenContract.transferFrom(msg.sender, address(this), amount),
                 "token transfer not approved"
             );
         }
 
+        // Incrementally update deposit tree merkle root
+        // For example:
+        // a b => Root(ab), tree height 1, queueNumber 2
+        // ab, c => No update, queueNumber 3
+        // ab, c, d => Root(abcd), tree height 2, queueNumber 4
+        // abcd, e => No update, queueNumber 5
+        // abcd, e, f => Root(abcd,ef), tree height 3, queueNumber 6
+        // abcd, ef, g => No update, queueNumber 7
+        // abcd, ef, g, h => Root(abcdefgh), tree height 3, queueNumber 8
         uint[] memory depositArray = new uint[](5);
         depositArray[0] = pubkey[0];
         depositArray[1] = pubkey[1];
@@ -135,31 +151,47 @@ contract RollupNC is Update_verifier, Withdraw_verifier{
         depositArray[3] = 0;
         depositArray[4] = tokenType;
 
+        // Hash deposit, we store deposit hash
         uint depositHash = mimcMerkle.hashMiMC(
             depositArray
         );
+        // Push deposit to pending deposits queue
         pendingDeposits.push(depositHash);
         emit RequestDeposit(pubkey, amount, tokenType);
+        // Increase queue number
+        // NOTE: this number only decrease after processDeposits(), it indicate total number of deposits
         queueNumber++;
+        // Store temporary sub tree height
         uint tmpDepositSubtreeHeight = 0;
         uint tmp = queueNumber;
+        // Loop every two nodes, update path to root
         while(tmp % 2 == 0){
+            // Combine last two nodes to calcualte parent hash
             uint[] memory array = new uint[](2);
             array[0] = pendingDeposits[pendingDeposits.length - 2];
             array[1] = pendingDeposits[pendingDeposits.length - 1];
+            // Assign parent hash to penultimate node
             pendingDeposits[pendingDeposits.length - 2] = mimcMerkle.hashMiMC(
                 array
             );
+            // Remove last node, now we have parent hash as last node
             removeDeposit(pendingDeposits.length - 1);
+            // Loop to calculate upper parent hash
             tmp = tmp / 2;
+            // Increase tree height(2 => 1, 4 => 2, 8 => 3)
             tmpDepositSubtreeHeight++;
         }
+        // Set latest tree height
         if (tmpDepositSubtreeHeight > depositSubtreeHeight){
             depositSubtreeHeight = tmpDepositSubtreeHeight;
         }
     }
 
 
+
+    // Add deposit sub tree to balance tree. First it proof subtree at specific idx
+    // is empty.Then update new balance tree root with deposit sub tree. Decrease
+    // processed deposit number.
 
     // coordinator adds certain number of deposits to balance tree
     // coordinator must specify subtree index in the tree since the deposits
@@ -180,6 +212,7 @@ contract RollupNC is Update_verifier, Withdraw_verifier{
         return currentRoot;
     }
 
+    // Proof that tx is included in block and verify withdraw signature
     function withdraw(
         uint[9] memory txInfo, //[pubkeyX, pubkeyY, index, toX ,toY, nonce, amount, token_type_from, txRoot]
         uint[] memory position,
@@ -189,13 +222,16 @@ contract RollupNC is Update_verifier, Withdraw_verifier{
         uint[2][2] memory b,
         uint[2] memory c
     ) public{
+        // TokenType 0 is reserved for coordinator
         require(txInfo[7] > 0, "invalid tokenType");
+        // Mapping tx root to l2 block number
         require(updates[txInfo[8]] > 0, "txRoot does not exist");
         uint[] memory txArray = new uint[](8);
         for (uint i = 0; i < 8; i++){
             txArray[i] = txInfo[i];
         }
         uint txLeaf = mimcMerkle.hashMiMC(txArray);
+        // Merkle proof of tx exists, position is left/right indices
         require(txInfo[8] == mimcMerkle.getRootFromProof(
             txLeaf, position, proof),
             "transaction does not exist in specified transactions root"
@@ -206,6 +242,8 @@ contract RollupNC is Update_verifier, Withdraw_verifier{
         msgArray[0] = txInfo[5];
         msgArray[1] = uint(recipient);
 
+        // Withdraw verifier is simply eddsamimc message signature verifier
+        // txInfo[0] and txInfo[1] is eddsa pubkey
         require(withdraw_verifyProof(
             a, b, c,
             [txInfo[0], txInfo[1], mimcMerkle.hashMiMC(msgArray)]

@@ -1,5 +1,6 @@
 include "../../circomlib/circuits/mimc.circom";
 
+// Calculate tx hash (sender address(pubkey), sender index(leaf index), to address(pubkey), sender nonce, amount , token type)
 template TxLeaf() {
 
     signal input fromX;

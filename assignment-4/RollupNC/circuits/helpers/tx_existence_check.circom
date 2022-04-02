@@ -2,6 +2,7 @@ include "./tx_leaf.circom";
 include "./leaf_existence.circom";
 include "../../circomlib/circuits/eddsamimc.circom";
 
+// Verify tx merkle proof and tx signature
 template TxExistence(k){
 // k is depth of tx tree
 
@@ -22,6 +23,7 @@ template TxExistence(k){
     signal input R8y;
     signal input S;
 
+    // Calculate tx hash
     component txLeaf = TxLeaf();
     txLeaf.fromX <== fromX;
     txLeaf.fromY <== fromY;
@@ -32,6 +34,7 @@ template TxExistence(k){
     txLeaf.amount <== amount;
     txLeaf.tokenType <== tokenType;
 
+    // Verify tx merkle proof
     component txExistence = LeafExistence(k);
     txExistence.leaf <== txLeaf.out;
     txExistence.root <== txRoot;
@@ -41,6 +44,7 @@ template TxExistence(k){
         txExistence.paths2root[q] <== paths2root[q];
     }
 
+    // Verify tx signature
     component verifier = EdDSAMiMCVerifier();   
     verifier.enabled <== 1;
     verifier.Ax <== fromX;
