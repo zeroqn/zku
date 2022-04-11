@@ -75,7 +75,10 @@ library LoanUtilities {
     ) external {
 
 
+    // Dividend proof: notional * ratio == interest duration
     (,bytes memory _proof1OutputNotes) = _validateInterestProof(_proof1, _interestDuration, _loanVariables);
+    
+    // Private range proof: current interest balance < interest duration
     (bytes memory _proof2Outputs) = ACE(_loanVariables.aceAddress).validateProof(PRIVATE_RANGE_PROOF, address(this),_proof2);
     (bytes memory _proof2InputNotes, bytes memory _proof2OutputNotes, ,) = _proof2Outputs.get(0).extractProofOutput();
 
@@ -85,7 +88,7 @@ library LoanUtilities {
 
   }
 
-
+  
   function _validateInterestProof(
     bytes memory _proof1,
     uint256 _interestDuration,
@@ -97,9 +100,8 @@ library LoanUtilities {
     //PROOF 1
 
     //NotionalNote * a = WithdrawableInterestNote * b
-
     require(getRatio(_proof1).div(10000) ==
-            _loanVariables.interestPeriod.mul(scalingFactor)
+            _loanVariables.interestPeriod.mul(scalingFactor) // Because erc20 is U256 but aztec only support 32bit
               .div(
                 _loanVariables.interestRate
                 .mul(_interestDuration)
@@ -107,8 +109,11 @@ library LoanUtilities {
            , 'ratios do not match');
 
 
+    // Dividend proof: notional * ratio == interest amount
     (bytes memory _proof1Outputs) = ACE(_loanVariables.aceAddress).validateProof(DIVIDEND_PROOF, address(this), _proof1);
     (_proof1InputNotes, _proof1OutputNotes, ,) = _proof1Outputs.get(0).extractProofOutput();
+    
+    // First input must be notional note
     require(_noteCoderToStruct(_proof1InputNotes.get(0)).noteHash == _loanVariables.notional, 'incorrect notional note in proof 1');
 
   }
@@ -119,20 +124,24 @@ library LoanUtilities {
     LoanVariables storage _loanVariables
   ) external returns (bytes32 newCurrentInterestBalance) {
 
-
-    (bytes memory _proof2Outputs) = ACE(_loanVariables.aceAddress).validateProof(JOIN_SPLIT_PROOF, address(this),
-                                                                                 _proof2);
+    // Join split proof: interest balance note => interest withdrawal note + remain interest balance
+    (bytes memory _proof2Outputs) = ACE(_loanVariables.aceAddress).validateProof(JOIN_SPLIT_PROOF, address(this), _proof2);
     (bytes memory _proof2InputNotes, bytes memory _proof2OutputNotes, ,) = _proof2Outputs.get(0).extractProofOutput();
 
+    // Ensure withdraw output notes from two proofs are correct, _proof1OutputNotes are output for raito check.
     require(_noteCoderToStruct(_proof2OutputNotes.get(0)).noteHash ==
             _noteCoderToStruct(_proof1OutputNotes.get(0)).noteHash, 'withdraw note in 2 is not the same as 1');
 
+    // First proof for input notes are interest balance note
     require(_noteCoderToStruct(_proof2InputNotes.get(0)).noteHash == _loanVariables.currentInterestBalance, 'interest note in 2 is not correct');
 
+    // Approve to spend input interest balance note
     _loanVariables.settlementToken.confidentialApprove(_noteCoderToStruct(_proof2InputNotes.get(0)).noteHash, address(this), true, '');
 
+    // Actually transfer outputs from ace
     _loanVariables.settlementToken.confidentialTransferFrom(JOIN_SPLIT_PROOF, _proof2Outputs.get(0));
 
+    // Return remain interest balance note
     newCurrentInterestBalance = _noteCoderToStruct(_proof2OutputNotes.get(1)).noteHash;
 
   }
@@ -142,15 +151,21 @@ library LoanUtilities {
     LoanVariables storage _loanVariables
   ) external returns (bytes32 newCurrentInterestBalance) {
 
+    // Join split proof: interest balance + [borrower unspend notes] => borrower change + new interest balance
     (bytes memory _proofOutputs) = ACE(_loanVariables.aceAddress).validateProof(JOIN_SPLIT_PROOF, address(this), _proofData);
     (bytes memory _proofInputNotes, bytes memory _proofOutputNotes, ,) = _proofOutputs.get(0).extractProofOutput();
+    // First input must be interest balance
     require(_noteCoderToStruct(_proofInputNotes.get(0)).noteHash == _loanVariables.currentInterestBalance, 'interest note does not match input note');
 
+    // Second output must be updated interest balance
     require(_noteCoderToStruct(_proofOutputNotes.get(1)).owner == address(this), 'output note not owned by contract');
 
+    // Approve spend input interest balance note
     _loanVariables.settlementToken.confidentialApprove(_noteCoderToStruct(_proofInputNotes.get(0)).noteHash, address(this), true, '');
 
+    // Transfer outputs from ace
     _loanVariables.settlementToken.confidentialTransferFrom(JOIN_SPLIT_PROOF, _proofOutputs.get(0));
+    // Update interest balance
     newCurrentInterestBalance = _noteCoderToStruct(_proofOutputNotes.get(1)).noteHash;
 
   }
@@ -159,6 +174,7 @@ library LoanUtilities {
     bytes calldata _proofData,
     LoanVariables storage _loanVariables
   ) external {
+    // 65794 is Swap Proof, lender take borrower ask, swap borrower notional note and lender value note
     (bytes memory _proofOutputs) = ACE(_loanVariables.aceAddress).validateProof(65794, address(this), _proofData);
     (bytes memory _loanProofOutputs) = _proofOutputs.get(0);
     (bytes memory _settlementProofOutputs) = _proofOutputs.get(1);
@@ -174,8 +190,8 @@ library LoanUtilities {
     LoanVariables storage _loanVariables
   ) external {
       
-    (bytes memory _proof2Outputs) = ACE(_loanVariables.aceAddress).validateProof(JOIN_SPLIT_PROOF, address(this),
-                                                                                 _proof2);
+    // Join split proof: notional note + remaining interest => lender outputs
+    (bytes memory _proof2Outputs) = ACE(_loanVariables.aceAddress).validateProof(JOIN_SPLIT_PROOF, address(this), _proof2);
     (bytes memory _proof2InputNotes, bytes memory _proof2OutputNotes, ,) = _proof2Outputs.get(0).extractProofOutput();
 
     // require(_noteCoderToStruct(_proof2InputNotes.get(1)).noteHash ==
@@ -186,6 +202,7 @@ library LoanUtilities {
     require(_noteCoderToStruct(_proof2OutputNotes.get(0)).owner == _loanVariables.lender, 'output note is not owned by the lender');
     require(_noteCoderToStruct(_proof2OutputNotes.get(1)).owner == _loanVariables.lender, 'output note is not owned by the lender');
 
+    // Approve spend input notional
     _loanVariables.settlementToken.confidentialApprove(_noteCoderToStruct(_proof2InputNotes.get(0)).noteHash, address(this), true, '');
     // the first note is the current interest note
 

@@ -62,6 +62,7 @@ contract Loan is ZkAssetMintable {
     lenderApprovals[msg.sender] = '0x';
   }
 
+  // sharedSecret is encrypted loan viewing key by lender public key
   function approveAccess(address _lender, bytes memory _sharedSecret) public {
     lenderApprovals[_lender] = _sharedSecret;
   }
@@ -71,8 +72,10 @@ contract Loan is ZkAssetMintable {
     bytes32 _currentInterestBalance,
     address _lender
   ) external {
+    // Only loan dapp contract created this loan contract can call this func
     LoanUtilities.onlyLoanDapp(msg.sender, loanVariables.loanFactory);
 
+    // Swap proof: lender take borrower ask, swap lender value and borrower notional value
     LoanUtilities._processLoanSettlement(_proofData, loanVariables);
 
     loanVariables.loanSettlementDate = block.timestamp;
@@ -82,15 +85,19 @@ contract Loan is ZkAssetMintable {
     lender = _lender;
   }
 
+  // mint new notes from given proof
   function confidentialMint(uint24 _proof, bytes calldata _proofData) external {
+    // Only loan dapp contract created this loan contract can call this func
     LoanUtilities.onlyLoanDapp(msg.sender, loanVariables.loanFactory);
     require(msg.sender == owner, "only owner can call the confidentialMint() method");
     require(_proofData.length != 0, "proof invalid");
     // overide this function to change the mint method to msg.sender
     (bytes memory _proofOutputs) = ace.mint(_proof, _proofData, msg.sender);
 
+    // A output note represent total value
     (, bytes memory newTotal, ,) = _proofOutputs.get(0).extractProofOutput();
 
+    // A output notes represent minted values, notional and interest balance
     (, bytes memory mintedNotes, ,) = _proofOutputs.get(1).extractProofOutput();
 
     (,
@@ -107,12 +114,17 @@ contract Loan is ZkAssetMintable {
     bytes memory _proof2,
     uint256 _interestDurationToWithdraw
   ) public {
+    // Dividend proof: notional * interest ratio == interest duration to withdrawal
     (,bytes memory _proof1OutputNotes) = LoanUtilities._validateInterestProof(_proof1, _interestDurationToWithdraw, loanVariables);
 
+    // Verify interest withdrawal timestamp is within correct time window
     require(_interestDurationToWithdraw.add(loanVariables.lastInterestPaymentDate) < block.timestamp, ' withdraw is greater than accrued interest');
 
+    // Join split proof: interest balance => interest withdrawal + remain interest balance
+    // Also transfer interest withdrawal note
     (bytes32 newCurrentInterestNoteHash) = LoanUtilities._processInterestWithdrawal(_proof2, _proof1OutputNotes, loanVariables);
 
+    // Update remain interest balance
     loanVariables.currentInterestBalance = newCurrentInterestNoteHash;
     loanVariables.lastInterestPaymentDate = loanVariables.lastInterestPaymentDate.add(_interestDurationToWithdraw);
 
@@ -120,10 +132,16 @@ contract Loan is ZkAssetMintable {
 
   }
 
+  // Adjust interest balance from borrower
   function adjustInterestBalance(bytes memory _proofData) public {
-
+    // Only borrower can adjust interest balance
     LoanUtilities.onlyBorrower(msg.sender,borrower);
 
+    // `[]` means optional, if present, borrower add amount to interest balance. Otherwise borrow withdraw
+    // asset from interest balance.
+
+    // Join split proof: old interest balance + [borrower unspend notes] => borrower change + new interest balance
+    // borrower change will return to borrower
     (bytes32 newCurrentInterestBalance) = LoanUtilities._processAdjustInterest(_proofData, loanVariables);
     loanVariables.currentInterestBalance = newCurrentInterestBalance;
   }
@@ -132,15 +150,19 @@ contract Loan is ZkAssetMintable {
     bytes memory _proof1,
     bytes memory _proof2
   ) public {
+    // Only borrower can repay loan
     LoanUtilities.onlyBorrower(msg.sender, borrower);
 
     uint256 remainingInterestDuration = loanVariables.loanSettlementDate.add(loanVariables.duration).sub(loanVariables.lastInterestPaymentDate);
 
+    // Dividend proof: notional * ratio == remaining interest duration
     (,bytes memory _proof1OutputNotes) = LoanUtilities._validateInterestProof(_proof1, remainingInterestDuration, loanVariables);
 
+    // Only after duration pass, can repay loan
     require(loanVariables.loanSettlementDate.add(loanVariables.duration) < block.timestamp, 'loan has not matured');
 
 
+    // Join split proof: notinal note + remaining interest => lender unspend outputs
     LoanUtilities._processLoanRepayment(
       _proof2,
       _proof1OutputNotes,
@@ -150,8 +172,11 @@ contract Loan is ZkAssetMintable {
     emit LoanRepaid();
   }
 
+   // Mark loan as default is balance is not enough
   function markLoanAsDefault(bytes memory _proof1, bytes memory _proof2, uint256 _interestDurationToWithdraw) public {
     require(_interestDurationToWithdraw.add(loanVariables.lastInterestPaymentDate) < block.timestamp, 'withdraw is greater than accrued interest');
+    // Dividend proof: notional * ratio = interest duration to withdrawal
+    // Private range proof: current interest balance < interest duration to withdrawal
     LoanUtilities._validateDefaultProofs(_proof1, _proof2, _interestDurationToWithdraw, loanVariables);
     emit LoanDefault();
   }

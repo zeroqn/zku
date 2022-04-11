@@ -52,7 +52,9 @@ contract LoanDapp is IAZTEC {
   address[] public loans;
   mapping(uint => address) public settlementCurrencies;
 
+  // Mint proof in ACE
   uint24 MINT_PRO0F = 66049;
+  // Swap proof in ACE
   uint24 BILATERAL_SWAP_PROOF = 65794;
 
   modifier onlyOwner() {
@@ -70,6 +72,7 @@ contract LoanDapp is IAZTEC {
     aceAddress = _aceAddress;
   }
 
+  // Allowed erc20 list for loan
   function _getCurrencyContract(uint _settlementCurrencyId) internal view returns (address) {
     require(settlementCurrencies[_settlementCurrencyId] != address(0), 'Settlement Currency is not defined');
     return settlementCurrencies[_settlementCurrencyId];
@@ -79,6 +82,7 @@ contract LoanDapp is IAZTEC {
     return uint(keccak256(abi.encodePacked(_note, _user)));
   }
 
+  // Generate access id
   function _approveNoteAccess(
     bytes32 _note,
     address _userAddress,
@@ -100,6 +104,7 @@ contract LoanDapp is IAZTEC {
   ) private returns (address) {
     address loanCurrency = _getCurrencyContract(_loanVariables[3]);
 
+    // New loan contract
     Loan newLoan = new Loan(
       _notional,
       _loanVariables,
@@ -111,17 +116,22 @@ contract LoanDapp is IAZTEC {
     loans.push(address(newLoan));
     Loan loanContract = Loan(address(newLoan));
 
-    loanContract.setProofs(1, uint256(-1));
+    // NOTE: setProofs is not found in loan.sol
+    /* loanContract.setProofs(1, uint256(-1)); */
+
+    // Mint proof: create loan notional
     loanContract.confidentialMint(MINT_PROOF, bytes(_proofData));
 
     return address(newLoan);
   }
 
+  // Add new erc20 to allowed list
   function addSettlementCurrency(uint _id, address _address) external onlyOwner {
     settlementCurrencies[_id] = _address;
     emit SettlementCurrencyAdded(_id, _address);
   }
 
+  // Borrower create a loan
   function createLoan(
     bytes32 _notional,
     string calldata _viewingKey,
@@ -155,6 +165,7 @@ contract LoanDapp is IAZTEC {
     );
   }
 
+  // Approve to spend given AZTEC note
   function approveLoanNotional(
     bytes32 _noteHash,
     bytes memory _signature,
@@ -165,6 +176,7 @@ contract LoanDapp is IAZTEC {
     emit LoanApprovedForSettlement(_loanId);
   }
 
+  // Lender submit request, if borrower approve by encrypt viewing key using lender publickey
   function submitViewRequest(address _loanId, string calldata _lenderPublicKey) external {
     emit ViewRequestCreated(
       _loanId,
@@ -173,11 +185,12 @@ contract LoanDapp is IAZTEC {
     );
   }
 
+  // Borrower approve lender request
   function approveViewRequest(
     address _loanId,
     address _lender,
     bytes32 _notionalNote,
-    string calldata _sharedSecret
+    string calldata _sharedSecret // viewing key encrypted by lender public 
   ) external onlyBorrower(_loanId) {
     uint accessId = _generateAccessId(_notionalNote, _lender);
 
@@ -204,6 +217,7 @@ contract LoanDapp is IAZTEC {
 
   mapping(uint => mapping(uint => LoanPayment)) public loanPayments;
 
+  // Settle initial interest balance and swap lender note and borrower notional note
   function settleInitialBalance(
     address _loanId,
     bytes calldata _proofData,
@@ -233,6 +247,7 @@ contract LoanDapp is IAZTEC {
       );
     }
 
+    // SharedSecret is encrypted viewing key
     if (bytes(_sharedSecret).length != 0) {
       _approveNoteAccess(
         _note,
