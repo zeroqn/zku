@@ -26,6 +26,7 @@ template Transaction(levels, nIns, nOuts, zeroLeaf, length) {
     signal input publicAmount;
     signal input extDataHash; // arbitrary
 
+    // Unspend commitment inputs from same destination chainID
     // data for transaction inputs
     signal input inputNullifier[nIns];
     signal input inAmount[nIns];
@@ -55,6 +56,7 @@ template Transaction(levels, nIns, nOuts, zeroLeaf, length) {
 
     // verify correctness of transaction inputs
     for (var tx = 0; tx < nIns; tx++) {
+        // Poseidon(privateKey)
         inKeypair[tx] = Keypair();
         inKeypair[tx].privateKey <== inPrivateKey[tx];
 
@@ -64,6 +66,7 @@ template Transaction(levels, nIns, nOuts, zeroLeaf, length) {
         inCommitmentHasher[tx].inputs[2] <== inKeypair[tx].publicKey;
         inCommitmentHasher[tx].inputs[3] <== inBlinding[tx];
 
+        // Poseidon(privateKey, commitment, merklePath)
         inSignature[tx] = Signature();
         inSignature[tx].privateKey <== inPrivateKey[tx];
         inSignature[tx].commitment <== inCommitmentHasher[tx].out;
@@ -75,15 +78,18 @@ template Transaction(levels, nIns, nOuts, zeroLeaf, length) {
         inNullifierHasher[tx].inputs[2] <== inSignature[tx].out;
         inNullifierHasher[tx].out === inputNullifier[tx];
 
+        // Verify merkle proof for this commitment
         inTree[tx] = ManyMerkleProof(levels, length);
         inTree[tx].leaf <== inCommitmentHasher[tx].out;
         inTree[tx].pathIndices <== inPathIndices[tx];
 
+        // input commitment must be included in one of merkle tree
         // add the roots and diffs signals to the bridge circuit
         for (var i = 0; i < length; i++) {
             inTree[tx].roots[i] <== roots[i];
         }
 
+        // Enable membership check on merkle root in roots above
         inTree[tx].isEnabled <== inAmount[tx];
         for (var i = 0; i < levels; i++) {
             inTree[tx].pathElements[i] <== inPathElements[tx][i];
@@ -133,5 +139,6 @@ template Transaction(levels, nIns, nOuts, zeroLeaf, length) {
 
     // optional safety constraint to make sure extDataHash cannot be changed
     signal extDataSquare;
+    // Prevent compiler optimization
     extDataSquare <== extDataHash * extDataHash;
 }

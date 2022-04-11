@@ -268,11 +268,15 @@ contract VAnchor is VAnchorBase {
 		@param _extData The external data for the transaction
 	 */
 	function _executeValidationAndVerification(VAnchorEncodeInputs.Proof memory _args, ExtData memory _extData) internal {
+        // Check nullifierHashes for spend nullifiers
 		for (uint256 i = 0; i < _args.inputNullifiers.length; i++) {
 			require(!isSpent(_args.inputNullifiers[i]), "Input is already spent");
 		}
+        // ExtData hash in SNARK field
 		require(uint256(_args.extDataHash) == uint256(keccak256(abi.encode(_extData))) % FIELD_SIZE, "Incorrect external data hash");
+        // Verify public amount is valid, fee is valid, extAmount - fee is valid
 		require(_args.publicAmount == calculatePublicAmount(_extData.extAmount, _extData.fee), "Invalid public amount");
+
 		_executeVerification(_args);
 
 		for (uint256 i = 0; i < _args.inputNullifiers.length; i++) {
@@ -286,10 +290,14 @@ contract VAnchor is VAnchorBase {
 		@param _args The zkSNARK proof parameters
 	 */
 	function _executeVerification(VAnchorEncodeInputs.Proof memory _args) view internal {
+        // Spend 2 commitments, verify merkle tree proof and output commitment are correct
 		if (_args.inputNullifiers.length == 2) {
 			(bytes memory encodedInput, bytes32[] memory roots) = VAnchorEncodeInputs._encodeInputs2(_args, maxEdges);
+            // First root is the root of `this chain` merkle tree the remaining roots are of the neighboring
+            // roots in edges.
 			require(isValidRoots(roots), "Invalid roots");
 			require(verify2(_args.proof, encodedInput), "Invalid transaction proof");
+        // Spend 16 commitments, verify merkle tree proof and output commitment are correct
 		} else if (_args.inputNullifiers.length == 16) {
 			(bytes memory encodedInput, bytes32[] memory roots) = VAnchorEncodeInputs._encodeInputs16(_args, maxEdges);
 			require(isValidRoots(roots), "Invalid roots");

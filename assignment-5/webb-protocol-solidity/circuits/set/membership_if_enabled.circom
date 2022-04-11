@@ -21,6 +21,8 @@ template ForceSetMembershipIfEnabled(length) {
   
   product[0] <== element;
   
+  // So if element is included in set, then one of diffs value should
+  // be 0 (because set[i] - element).
   for (var i = 0; i < length; i++) { 
     diffs[i] <== set[i] - element;
     product[i + 1] <== product[i] * diffs[i];
