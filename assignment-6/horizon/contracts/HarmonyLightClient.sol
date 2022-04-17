@@ -19,6 +19,7 @@ contract HarmonyLightClient is
     using SafeCast for *;
     using SafeMathUpgradeable for uint256;
 
+    // Epoch checkpoint block header
     struct BlockHeader {
         bytes32 parentHash;
         bytes32 stateRoot;
@@ -44,21 +45,26 @@ contract HarmonyLightClient is
         bytes32 hash
     );
 
+    // First initialized checkpoint block header
     BlockHeader firstBlock;
+    // ??? No used in contract
     BlockHeader lastCheckPointBlock;
 
+    // From different shards?
     // epoch to block numbers, as there could be >=1 mmr entries per epoch
     mapping(uint256 => uint256[]) epochCheckPointBlockNumbers;
 
     // block number to BlockHeader
     mapping(uint256 => BlockHeader) checkPointBlocks;
 
+    // Mmr root in epoch checkpoint block header
     mapping(uint256 => mapping(bytes32 => bool)) epochMmrRoots;
 
     uint8 relayerThreshold;
 
     event RelayerThresholdChanged(uint256 newThreshold);
     event RelayerAdded(address relayer);
+    // If a relayer submit invalid block, it will be removed
     event RelayerRemoved(address relayer);
 
     bytes32 public constant RELAYER_ROLE = keccak256("RELAYER_ROLE");
@@ -104,16 +110,19 @@ contract HarmonyLightClient is
         emit RelayerRemoved(relayerAddress);
     }
 
+    // initial first epoch checkpoint block
     function initialize(
         bytes memory firstRlpHeader,
         address[] memory initialRelayers,
         uint8 initialRelayerThreshold
     ) external initializer {
+        // Parse block header from given rlp encoded block header
         HarmonyParser.BlockHeader memory header = HarmonyParser.toBlockHeader(
             firstRlpHeader
         );
         
         firstBlock.parentHash = header.parentHash;
+        // Account state root
         firstBlock.stateRoot = header.stateRoot;
         firstBlock.transactionsRoot = header.transactionsRoot;
         firstBlock.receiptsRoot = header.receiptsRoot;
@@ -137,7 +146,10 @@ contract HarmonyLightClient is
 
     }
 
+    // Relayer periodically submit checkpoint blocks
+    // FIXME: should verify quotum signatrue against quotum pubkeys?
     function submitCheckpoint(bytes memory rlpHeader) external onlyRelayers whenNotPaused {
+        // Decoded checkpoint block header
         HarmonyParser.BlockHeader memory header = HarmonyParser.toBlockHeader(
             rlpHeader
         );
@@ -183,8 +195,14 @@ contract HarmonyLightClient is
         );
         uint256[] memory checkPointBlockNumbers = epochCheckPointBlockNumbers[epoch];
         uint256 nearest = 0;
+        // Loop to find a epoch block header nearest to given block number
         for (uint256 i = 0; i < checkPointBlockNumbers.length; i++) {
             uint256 checkPointBlockNumber = checkPointBlockNumbers[i];
+            // Try to fix alway false statement below. Find the nearest
+            // bigger checkpoint block number
+            if (checkPointBlockNubmer > blockNumber && 0 == nearest) {
+                nearest = checkPointblockNumer;
+            }
             if (
                 checkPointBlockNumber > blockNumber &&
                 checkPointBlockNumber < nearest

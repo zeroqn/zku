@@ -42,9 +42,11 @@ contract EthereumLightClient is Ethash, Initializable, PausableUpgradeable {
     // Blocks in 'Verified' state
     mapping(uint256 => bool) public verifiedBlocks;
 
+    // Finalized after `DEFAULT_FINALITY_CONFIRMS`
     // Blocks in 'Finalized' state
     mapping(uint256 => bool) public finalizedBlocks;
 
+    // Ethereum is POW chain
     // Valid relayed blocks for a block height, in the form: blockNumber => blockHeaderHash[]
     mapping(uint256 => uint256[]) public blocksByHeight;
 
@@ -58,6 +60,7 @@ contract EthereumLightClient is Ethash, Initializable, PausableUpgradeable {
     // (please note that 'longest' chain is based on total difficulty)
     // uint public longestChainHead;
 
+    // Branch? from checkpoint block
     // Longest branch head of each checkpoint, in the form: (checkpoint block hash) => (head block hash)
     // (note that 'longest branch' means the branch which has biggest cumulative difficulty from checkpoint)
     mapping(uint256 => uint256) public longestBranchHead;
@@ -111,6 +114,7 @@ contract EthereumLightClient is Ethash, Initializable, PausableUpgradeable {
             "Relay block failed: parent block not relayed yet"
         );
 
+        // i = j + 1
         // Check block height
         require(
             header.number == blocks[header.parentHash].number.add(1),
@@ -123,6 +127,7 @@ contract EthereumLightClient is Ethash, Initializable, PausableUpgradeable {
             "Relay block failed: invalid timestamp"
         );
 
+        // POW difficulty transition
         // Check difficulty
         require(
             _checkDiffValidity(
@@ -132,6 +137,7 @@ contract EthereumLightClient is Ethash, Initializable, PausableUpgradeable {
             "Relay block failed: invalid difficulty"
         );
 
+        // Power hash
         // Verify block PoW
         uint256 sealHash = EthereumParser.calcBlockSealHash(_rlpHeader);
         bool rVerified = verifyEthash(

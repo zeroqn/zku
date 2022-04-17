@@ -38,21 +38,27 @@ contract TokenLockerOnHarmony is TokenLocker, OwnableUpgradeable {
         bytes calldata mptkey,
         bytes calldata proof
     ) external {
+        // Verify cross-chain transaction block inclusion
         bytes32 blockHash = bytes32(lightclient.blocksByHeight(blockNo, 0));
+        // Verify Receipt root is same in cross-chain transaction block header
         require(
             lightclient.VerifyReceiptsHash(blockHash, rootHash),
             "wrong receipt hash"
         );
+        // Nullifier to prevent double spend
         bytes32 receiptHash = keccak256(
             abi.encodePacked(blockHash, rootHash, mptkey)
         );
         require(spentReceipt[receiptHash] == false, "double spent!");
+        // Verify cross-chain transaction receipt inclusion in receipt root
         bytes memory rlpdata = EthereumProver.validateMPTProof(
             rootHash,
             mptkey,
             proof
         );
         spentReceipt[receiptHash] = true;
+        // `execute` parse and filter cross-chain transaction log related to `otherSideBridge`,
+        // mint/burn/map token according to log event.
         uint256 executedEvents = execute(rlpdata);
         require(executedEvents > 0, "no valid event");
     }

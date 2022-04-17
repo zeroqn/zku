@@ -12,6 +12,7 @@ import "./lib/ECVerify.sol";
 import "./lib/MPT.sol";
 
 library HarmonyProver {
+    // Verify transaction receipt
     using MPT for MPT.MerkleProof;
 
     function verifyTrieProof(MPT.MerkleProof memory data)
@@ -57,6 +58,7 @@ library HarmonyProver {
         return (true, "");
     }
 
+    // Verify transaction receipt match root in block header
     function verifyReceipt(
         HarmonyParser.BlockHeader memory header,
         MPT.MerkleProof memory receiptdata
@@ -70,6 +72,7 @@ library HarmonyProver {
         return (true, "");
     }
 
+    // Verify account state root match root in block header
     function verifyAccount(
         HarmonyParser.BlockHeader memory header,
         MPT.MerkleProof memory accountdata
@@ -83,6 +86,8 @@ library HarmonyProver {
         return (true, "");
     }
 
+    // Verify target log in receipt, token locker mint/burn token base on
+    // log event
     function verifyLog(
         MPT.MerkleProof memory receiptdata,
         bytes memory logdata,

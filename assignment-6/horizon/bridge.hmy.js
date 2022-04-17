@@ -16,11 +16,13 @@ function hexToBytes(hex) {
 
 describe('HarmonyProver', function () {
     beforeEach(async function () {
+        // Deploy mmr libarary
         MMRVerifier = await ethers.getContractFactory("MMRVerifier");
         mmrVerifier = await MMRVerifier.deploy();
         await mmrVerifier.deployed();
 
         // await HarmonyProver.link('MMRVerifier', mmrVerifier);
+        // Deploy harmony prover library, link to mmr verifier
         HarmonyProver = await ethers.getContractFactory(
             "HarmonyProver",
             {
@@ -34,6 +36,7 @@ describe('HarmonyProver', function () {
     });
 
     it('parse rlp block header', async function () {
+        // Test prover rlp header decode functionality
         let header = await prover.toBlockHeader(hexToBytes(headerData.rlpheader));
         expect(header.hash).to.equal(headerData.hash);
     });
@@ -46,6 +49,7 @@ describe('HarmonyProver', function () {
             transactions.hash
         ];
         let isTxn = true;
+        // Get cross-chain transaction receipt proof from local full node
         let txProof = await rpcWrapper(
             transactions.hash,
             isTxn,
@@ -68,10 +72,13 @@ let HarmonyLightClient, lightclient;
 
 describe('TokenLocker', function () {
     beforeEach(async function () {
+        // Deploy token locker contract on ethereum
         TokenLockerOnEthereum = await ethers.getContractFactory("TokenLockerOnEthereum");
+        // Deploy MMRVerifier.deploy
         tokenLocker = await MMRVerifier.deploy();
         await tokenLocker.deployed();
 
+        // Bind token locker address as otherSideBridge address
         await tokenLocker.bind(tokenLocker.address);
 
         // // await HarmonyProver.link('MMRVerifier', mmrVerifier);

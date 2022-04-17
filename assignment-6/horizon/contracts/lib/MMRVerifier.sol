@@ -35,6 +35,7 @@ library MMRVerifier {
         // }
         uint256 size = getSize(width);
         require(size >= index, "Index is out of range");
+        // Customized MMR, remove size binding from mmr root hash
         // Check the root equals the peak bagging hash
         require(
             root ==
@@ -56,7 +57,9 @@ library MMRVerifier {
         uint256 cursor;
         bytes32 targetPeak;
         uint256[] memory peakIndexes = getPeakIndexes(width);
+        // Loop from lower to heigher
         for (uint256 i = 0; i < peakIndexes.length; i++) {
+            // Target leaf index must be smaller than its peak index
             if (peakIndexes[i]-1 >= index) {
                 targetPeak = peaks[i];
                 cursor = peakIndexes[i]-1;
@@ -145,6 +148,7 @@ library MMRVerifier {
      */
     function mountainHeight(uint256 size) internal pure returns (uint8) {
         uint8 height = 1;
+        // 2^n - 1
         while (uint256(1) << height <= size + height) {
             height++;
         }
@@ -192,9 +196,11 @@ library MMRVerifier {
         peakIndexes = new uint256[](numOfPeaks(width));
         uint256 count;
         uint256 size;
+        // 2^n - 1
+        // From left most to right
         for (uint256 i = 255; i > 0; i--) {
             if (width & (1 << (i - 1)) != 0) {
-                // peak exists
+                // peak exists, element size accumulated
                 size = size + (1 << i) - 1;
                 peakIndexes[count++] = size;
             }

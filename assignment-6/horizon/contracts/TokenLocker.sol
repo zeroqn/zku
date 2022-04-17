@@ -49,6 +49,7 @@ contract TokenLocker is TokenRegistry {
         uint256 amount
     ) external {
         require(recipient != address(0), "recipient is a zero address");
+        // Check inverse mapping in TokenRegistry
         require(
             RxMappedInv[address(token)] != address(0),
             "bridge does not exist"
@@ -85,6 +86,7 @@ contract TokenLocker is TokenRegistry {
         for (uint256 i = 0; i < logs.length; i++) {
             RLPReader.RLPItem[] memory rlpLog = logs[i].toList();
             address Address = rlpLog[0].toAddress();
+            // Token address should be bridged token in registry
             if (Address != otherSideBridge) continue;
             RLPReader.RLPItem[] memory Topics = rlpLog[1].toList(); // TODO: if is lock event
             bytes32[] memory topics = new bytes32[](Topics.length);
@@ -115,6 +117,7 @@ contract TokenLocker is TokenRegistry {
         }
     }
 
+    // Burn on other side, unlock here
     function onBurnEvent(bytes32[] memory topics, bytes memory data) private {
         address token = address(uint160(uint256(topics[1])));
         //address sender = address(uint160(uint256(topics[2])));
@@ -126,6 +129,7 @@ contract TokenLocker is TokenRegistry {
         lockedToken.safeTransfer(recipient, amount);
     }
 
+    // Lock on other side, mint here
     function onLockEvent(bytes32[] memory topics, bytes memory data) private {
         address token = address(uint160(uint256(topics[1])));
         //address sender = address(uint160(uint256(topics[2])));
