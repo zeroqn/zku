@@ -77,12 +77,15 @@ contract NearBridge is INearBridge, AdminControlled {
     uint constant PAUSED_CHALLENGE = 8;
     uint constant PAUSED_VERIFY = 16;
 
+    // Stake `lockEthAmount` to become relayer
     function deposit() public payable override pausable(PAUSED_DEPOSIT) {
         require(msg.value == lockEthAmount && balanceOf[msg.sender] == 0);
         balanceOf[msg.sender] = msg.value;
     }
 
+    // To quit and get back staked eth
     function withdraw() public override pausable(PAUSED_WITHDRAW) {
+        // Can quit if it's not the last submitter or last submitted pass chalenge window considered valid
         require(msg.sender != lastSubmitter || block.timestamp >= lastValidAt);
         uint amount = balanceOf[msg.sender];
         require(amount != 0);
@@ -90,19 +93,29 @@ contract NearBridge is INearBridge, AdminControlled {
         payable(msg.sender).transfer(amount);
     }
 
+    // Since ed25519 is expensive on ethereum, near bridge introduce fraud proof challege for
+    // invalid signature.
     function challenge(address payable receiver, uint signatureIndex) external override pausable(PAUSED_CHALLENGE) {
+        // Within challenge window
         require(block.timestamp < lastValidAt, "No block can be challenged at this time");
+        // Must challenge available signature and verify ed25519 signature
         require(!checkBlockProducerSignatureInHead(signatureIndex), "Can't challenge valid signature");
 
+        // Punish relayer submit this invalid block
         balanceOf[lastSubmitter] = balanceOf[lastSubmitter] - lockEthAmount;
+        // Reset challenge window
         lastValidAt = 0;
+        // Give half of staked eth to valid challenger
         receiver.call{value: lockEthAmount / 2}("");
     }
 
     function checkBlockProducerSignatureInHead(uint signatureIndex) public view override returns (bool) {
+        // Check signature existent
         // Shifting by a number >= 256 returns zero.
         require((untrustedSignatureSet & (1 << signatureIndex)) != 0, "No such signature");
         unchecked {
+            // Extract challenged signature from epoch block header, `untrustedNextEpoch` true if untrustedBlock
+            // comes from next epoch.
             Epoch storage untrustedEpoch = epochs[untrustedNextEpoch ? (curEpoch + 1) % 3 : curEpoch];
             NearDecoder.Signature storage signature = untrustedSignatures[signatureIndex];
             bytes memory message = abi.encodePacked(
@@ -118,8 +131,10 @@ contract NearBridge is INearBridge, AdminControlled {
 
     // The first part of initialization -- setting the validators of the current epoch.
     function initWithValidators(bytes memory data) public override onlyAdmin {
+        // Not initialized and number of block producers is 0
         require(!initialized && epochs[0].numBPs == 0, "Wrong initialization stage");
 
+        // Deserialize block producers from data
         Borsh.Data memory borsh = Borsh.from(data);
         NearDecoder.BlockProducer[] memory initialValidators = borsh.decodeBlockProducers();
         borsh.done();
@@ -129,6 +144,7 @@ contract NearBridge is INearBridge, AdminControlled {
 
     // The second part of the initialization -- setting the current head.
     function initWithBlock(bytes memory data) public override onlyAdmin {
+        // After `initWithValidators`
         require(!initialized && epochs[0].numBPs != 0, "Wrong initialization stage");
         initialized = true;
 
@@ -143,6 +159,7 @@ contract NearBridge is INearBridge, AdminControlled {
         epochs[1].epochId = nearBlock.inner_lite.next_epoch_id;
         blockHashes_[nearBlock.inner_lite.height] = nearBlock.hash;
         blockMerkleRoots_[nearBlock.inner_lite.height] = nearBlock.inner_lite.block_merkle_root;
+        // Set next epoch's block producers
         setBlockProducers(nearBlock.next_bps.blockProducers, epochs[1]);
     }
 
@@ -156,19 +173,24 @@ contract NearBridge is INearBridge, AdminControlled {
 
     function bridgeState() public view returns (BridgeState memory res) {
         if (block.timestamp < lastValidAt) {
+            // Last submitted block still within challenge window, override with current block nubmer
             res.currentHeight = curHeight;
             res.nextTimestamp = untrustedTimestamp;
             res.nextValidAt = lastValidAt;
+            // If last submitted comes from next epoch, set number of producers from next epoch
             unchecked {
                 res.numBlockProducers = epochs[untrustedNextEpoch ? (curEpoch + 1) % 3 : curEpoch].numBPs;
             }
         } else {
+            // If relay hasn't relay new block and last submitted pass challenge window, return untrustedHeight
             res.currentHeight = lastValidAt == 0 ? curHeight : untrustedHeight;
         }
     }
 
+    // Relay new near epoch block header
     function addLightClientBlock(bytes memory data) public override pausable(PAUSED_ADD_BLOCK) {
         require(initialized, "Contract is not initialized");
+        // Relayer must have `lockEthAmount` staked eth
         require(balanceOf[msg.sender] >= lockEthAmount, "Balance is not enough");
 
         Borsh.Data memory borsh = Borsh.from(data);
@@ -176,19 +198,26 @@ contract NearBridge is INearBridge, AdminControlled {
         borsh.done();
 
         unchecked {
+            // Last submitted block still in challenge window, check where we can replace it
             // Commit the previous block, or make sure that it is OK to replace it.
             if (block.timestamp < lastValidAt) {
+                // If this submitted block has bigger block timestamp than last submitted one + replace duration
                 require(
                     nearBlock.inner_lite.timestamp >= untrustedTimestamp + replaceDuration,
                     "Can only replace with a sufficiently newer block"
                 );
             } else if (lastValidAt != 0) {
+                // Last submitted near block pass challenge window, become valid block, set it to current block
                 curHeight = untrustedHeight;
+                // If last submitted near block comes from next epoch
                 if (untrustedNextEpoch) {
+                    // Then next epoch should be current epoch
                     curEpoch = (curEpoch + 1) % 3;
                 }
+                // Reset pass challenge timestamp
                 lastValidAt = 0;
 
+                // Save last submitted block as valid near block
                 blockHashes_[curHeight] = untrustedHash;
                 blockMerkleRoots_[curHeight] = untrustedMerkleRoot;
             }
@@ -212,6 +241,7 @@ contract NearBridge is INearBridge, AdminControlled {
             require(nearBlock.approvals_after_next.length >= thisEpoch.numBPs, "Approval list is too short");
             // The sum of uint128 values cannot overflow.
             uint256 votedFor = 0;
+            // Calculate accumulated vote weight
             for ((uint i, uint cnt) = (0, thisEpoch.numBPs); i != cnt; ++i) {
                 bytes32 stakes = thisEpoch.packedStakes[i >> 1];
                 if (nearBlock.approvals_after_next[i].some) {
@@ -235,12 +265,14 @@ contract NearBridge is INearBridge, AdminControlled {
                 );
             }
 
+            // Untrusted until pass challenge window
             untrustedHeight = nearBlock.inner_lite.height;
             untrustedTimestamp = nearBlock.inner_lite.timestamp;
             untrustedHash = nearBlock.hash;
             untrustedMerkleRoot = nearBlock.inner_lite.block_merkle_root;
             untrustedNextHash = nearBlock.next_hash;
 
+            // Prepare untrusted signature set for challenge window
             uint256 signatureSet = 0;
             for ((uint i, uint cnt) = (0, thisEpoch.numBPs); i < cnt; i++) {
                 NearDecoder.OptionalSignature memory approval = nearBlock.approvals_after_next[i];
@@ -250,13 +282,16 @@ contract NearBridge is INearBridge, AdminControlled {
                 }
             }
             untrustedSignatureSet = signatureSet;
+            // Whether current block is from next epoch
             untrustedNextEpoch = fromNextEpoch;
             if (fromNextEpoch) {
+                // thisEpoch is (curEpoch +1) % 3, then next epoch should +2 then %3
                 Epoch storage nextEpoch = epochs[(curEpoch + 2) % 3];
                 nextEpoch.epochId = nearBlock.inner_lite.next_epoch_id;
                 setBlockProducers(nearBlock.next_bps.blockProducers, nextEpoch);
             }
             lastSubmitter = msg.sender;
+            // Pass challenge window timestamp
             lastValidAt = block.timestamp + lockDuration;
         }
     }
@@ -272,6 +307,7 @@ contract NearBridge is INearBridge, AdminControlled {
             for (uint i = 0; i < cnt; i++) {
                 epoch.keys[i] = src[i].publicKey.k;
             }
+            // Packed to Bytes32, uint128 is Bytes16
             uint256 totalStake = 0; // Sum of uint128, can't be too big.
             for (uint i = 0; i != cnt; ++i) {
                 uint128 stake1 = src[i].stake;
@@ -290,6 +326,8 @@ contract NearBridge is INearBridge, AdminControlled {
 
     function blockHashes(uint64 height) public view override pausable(PAUSED_VERIFY) returns (bytes32 res) {
         res = blockHashes_[height];
+        // If last submitted block pass challenge window but relayer doens't relay new block, then consider
+        // last submitted is valid block and return its hash
         if (res == 0 && block.timestamp >= lastValidAt && lastValidAt != 0 && height == untrustedHeight) {
             res = untrustedHash;
         }
@@ -297,6 +335,7 @@ contract NearBridge is INearBridge, AdminControlled {
 
     function blockMerkleRoots(uint64 height) public view override pausable(PAUSED_VERIFY) returns (bytes32 res) {
         res = blockMerkleRoots_[height];
+        // Same as `blockHashes`
         if (res == 0 && block.timestamp >= lastValidAt && lastValidAt != 0 && height == untrustedHeight) {
             res = untrustedMerkleRoot;
         }
